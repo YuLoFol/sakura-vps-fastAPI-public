@@ -2,6 +2,7 @@ import os
 import json
 import imaplib
 import email
+import datetime as dt
 from urllib import request
 from email.header import decode_header
 from dotenv import load_dotenv
@@ -22,6 +23,8 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD_YU")
 
 #Notopn API Key取得
 NOTION_API_KEY = os.getenv("NOTION_API_KEY")
+NOTION_DATASOURCE_ID_CASHFLOW = os.getenv("NOTION_DATASOURCE_ID_CASHFLOW")
+
 
 #FastAPI実例
 app = FastAPI()
@@ -92,17 +95,47 @@ def mail_read(limit: int = 5):
         raise HTTPException(status_code=500, detail=f"讀取郵件時發生錯誤: {str(e)}")
 
 #notion_read実例
+@app.get("/notion_properities")
+def notion_get_properities():
+    notion_url = f"https://api.notion.com/v1/data_sources/{NOTION_DATASOURCE_ID_CASHFLOW}"
+    req = request.Request(
+        url = notion_url,
+        headers = {
+            "Authorization": f"Bearer {NOTION_API_KEY}",
+            "Notion-Version": "2026-03-11"
+        },
+        method = "GET"
+    )
+    try:
+        with request.urlopen(req) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"get Error when getting properities")
+
 @app.get("/notion_read")
-def notion_read():
+def notion_search():
     """最新のNotionデータ3日分を取得する"""
-    notion_url = "https://api.notion.com/v1/pages/36a76c27819a804a8ec1f10d37c97d89"
+    today = dt.datetime.now().strftime("%Y-%m-%d")
+    three_days_before = ((dt.datetime.now()) - (dt.timedelta(days=3))).strftime("%Y-%m-%d")
+    notion_url = f"https://api.notion.com/v1/data_sources/{NOTION_DATASOURCE_ID_CASHFLOW}/query"
     req = request.Request(
         url = notion_url, 
         headers = {
             "Authorization": f"Bearer {NOTION_API_KEY}",
-            "Notion-Version": "2026-03-11"
+            "Notion-Version": "2026-03-11",
+            "Content-Type": "application/json"
         }, 
-        method = "GET"
+        data = json.dumps({
+            "filter":{
+                "property": "日期",
+                "date": {"on_or_after": f"{three_days_before}"}
+            }
+            }).encode("utf-8"),
+            #"filter":{
+            #    "日期": {equals: str("2026/08/31")}
+            #}
+        method = "POST"
     )
     
     try:
@@ -110,7 +143,7 @@ def notion_read():
             data = json.loads(response.read().decode("utf-8"))
         return data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error when reading notion: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"get Error when reading notion: {str(e)}")
 
 
 if __name__ == "__main__":
