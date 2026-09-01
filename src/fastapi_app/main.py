@@ -47,10 +47,6 @@ app = FastAPI(lifespan=lifespan)
 def health_check():
     return {"message": 200}
 
-# security_check実例
-# @app.get("/security")
-# verify_mcp_token()
-
 # 通常の HTTP routers（REST API）
 app.include_router(r_health.router)
 app.include_router(r_notion.router)
