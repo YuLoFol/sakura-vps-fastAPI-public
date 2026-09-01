@@ -1,7 +1,24 @@
+import os
+from dotenv import load_dotenv
+from pydantic import AnyHttpUrl
 from mcp.server import MCPServer
+from mcp.server.auth.settings import AuthSettings
 from ..services.notion import get_properties, search_recent
+from ..core.security import StaticTokenVerifier
 
-notion_mcp = MCPServer("Notion")
+load_dotenv()
+
+PUBLIC_HOST=os.getenv("PUBLIC_HOST")
+
+notion_mcp = MCPServer(
+    "Notion",
+    token_verifier=StaticTokenVerifier(),
+    auth=AuthSettings(
+        issuer_url=AnyHttpUrl(f"https://{PUBLIC_HOST}"),
+        resource_server_url=AnyHttpUrl(f"https://{PUBLIC_HOST}/mcp/notion/"),
+        required_scopes=["mcp:read"],
+    ),
+)
 
 
 @notion_mcp.tool()

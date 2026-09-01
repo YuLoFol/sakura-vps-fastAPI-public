@@ -29,7 +29,6 @@ security = TransportSecuritySettings(
     allowed_origins=[f"https://{PUBLIC_HOST}"],
 )
 
-
 # Lifespan：3つの MCP server の session manager を同時に起動 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -43,6 +42,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 # FastAPI実例
 app = FastAPI(lifespan=lifespan)
 
+# health_check実例
+@app.get("/health")
+def health_check():
+    return {"message": 200}
+
+# security_check実例
+# @app.get("/security")
+# verify_mcp_token()
 
 # 通常の HTTP routers（REST API）
 app.include_router(r_health.router)
@@ -74,13 +81,6 @@ app.mount(
         streamable_http_path="/", transport_security=security
     ),
 )
-
-
-# health_check実例
-@app.get("/health")
-def health_check():
-    return {"message": 200}
-
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
