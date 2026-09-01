@@ -1,25 +1,20 @@
 import os
-import json
 import imaplib
 import email
 from email.header import decode_header
 from dotenv import load_dotenv
-from fastapi import APIRouter, HTTPException
 
-
-#Mail設定取得
 load_dotenv()
+
+#mail設定取得
 MAIL_IMAP_HOST = os.getenv("MAIL_IMAP_HOST")
 MAIL_IMAP_PORT = int(os.getenv("MAIL_IMAP_PORT", 993))
 MAIL_USER = os.getenv("MAIL_USER_YU")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD_YU")
 
-#router設定
-router = APIRouter()
 
-#decode header
-def decode_mime_header(raw_header):
-    """處理郵件標題可能包含的編碼（例如日文郵件常見）"""
+def _decode_mime_header(raw_header) -> str:
+    """ヘッダー処理"""
     if raw_header is None:
         return ""
     decoded_parts = decode_header(raw_header)
@@ -31,18 +26,16 @@ def decode_mime_header(raw_header):
             result += part
     return result
 
-#mail_read実例
-@router.get("/mail_read")
-def mail_read(limit: int = 5):
-    """讀取最新的 N 封郵件（預設 5 封）"""
+
+def read_latest_mail(limit: int = 5) -> list[dict]:
+    """最新のメール(N通)を読み取り(デフォルト5通)、return list[dict]"""
+    imap = imaplib.IMAP4_SSL(MAIL_IMAP_HOST, MAIL_IMAP_PORT)
     try:
-        imap = imaplib.IMAP4_SSL(MAIL_IMAP_HOST, MAIL_IMAP_PORT)
         imap.login(MAIL_USER, MAIL_PASSWORD)
         imap.select("INBOX")
 
         status, messages = imap.search(None, "ALL")
         mail_ids = messages[0].split()
-
         latest_ids = mail_ids[-limit:] if len(mail_ids) > limit else mail_ids
 
         results = []
@@ -51,8 +44,8 @@ def mail_read(limit: int = 5):
             raw_email = msg_data[0][1]
             msg = email.message_from_bytes(raw_email)
 
-            subject = decode_mime_header(msg.get("Subject"))
-            from_ = decode_mime_header(msg.get("From"))
+            subject = _decode_mime_header(msg.get("Subject"))
+            from_ = _decode_mime_header(msg.get("From"))
             date_ = msg.get("Date")
 
             results.append({
@@ -62,11 +55,6 @@ def mail_read(limit: int = 5):
                 "date": date_,
             })
 
+        return results
+    finally:
         imap.logout()
-        #return {"count": len(results), "mails": json.dumps(results, indent=4, ensure_ascii=False)}
-        return status, msg_data
-
-    except imaplib.IMAP4.error as e:
-        raise HTTPException(status_code=401, detail=f"IMAP 認證或連線失敗: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"讀取郵件時發生錯誤: {str(e)}")
