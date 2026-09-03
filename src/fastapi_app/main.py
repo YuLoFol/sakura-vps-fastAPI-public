@@ -15,7 +15,10 @@ from .routers import claris as r_claris
 from .routers import filemaker as r_filemaker
 
 #import MCPs
+#hub内のtoolを登録させるため、hub以外の.pyも事前にimportする
 from .mcp import hub as m_hub
+from .mcp import notion as m_notion
+from .mcp import mail as m_mail
 
 load_dotenv()
 
