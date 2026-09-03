@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from mcp.server.transport_security import TransportSecuritySettings
 
 #import Routers
-from .routers import health as r_health
+from .routers import router_health as r_health
 from .routers import notion as r_notion
 from .routers import mail as r_mail
 from .routers import claris as r_claris
@@ -17,6 +17,7 @@ from .routers import filemaker as r_filemaker
 #import MCPs
 #hub内のtoolを登録させるため、hub以外の.pyも事前にimportする
 from .mcp import hub as m_hub
+from .mcp import mcp_health as m_health
 from .mcp import notion as m_notion
 from .mcp import mail as m_mail
 
@@ -40,11 +41,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 # FastAPI実例
 app = FastAPI(lifespan=lifespan)
-
-# health_check実例
-@app.get("/health")
-def health_check():
-    return {"message": 200}
 
 # 通常の HTTP routers（REST API）
 app.include_router(r_health.router)
