@@ -15,9 +15,7 @@ from .routers import claris as r_claris
 from .routers import filemaker as r_filemaker
 
 #import MCPs
-from .mcp import health as m_health
-from .mcp import notion as m_notion
-from .mcp import mail as m_mail
+from .mcp import hub as m_hub
 
 load_dotenv()
 
@@ -29,13 +27,11 @@ security = TransportSecuritySettings(
     allowed_origins=[f"https://{PUBLIC_HOST}"],
 )
 
-# Lifespan：3つの MCP server の session manager を同時に起動 
+# Lifespan：MCP server の session manager を起動する。複数MCP起動する必要がある際、awaitで追加する 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with AsyncExitStack() as stack:
-        await stack.enter_async_context(m_health.health_mcp.session_manager.run())
-        await stack.enter_async_context(m_mail.mail_mcp.session_manager.run())
-        await stack.enter_async_context(m_notion.notion_mcp.session_manager.run())
+        await stack.enter_async_context(m_hub.hub_mcp.session_manager.run())
         yield
 
 
@@ -60,20 +56,8 @@ app.include_router(r_filemaker.router)
 # transport_security=security の指定によって、
 # DNS rebindingを防ぐ（default: 127.0.0.1 -> 設定せずにMCPを公開すると、エラーが発生する）
 app.mount(
-    "/mcp/health",
-    m_health.health_mcp.streamable_http_app(
-        streamable_http_path="/", transport_security=security
-    ),
-)
-app.mount(
-    "/mcp/mail",
-    m_mail.mail_mcp.streamable_http_app(
-        streamable_http_path="/", transport_security=security
-    ),
-)
-app.mount(
-    "/mcp/notion",
-    m_notion.notion_mcp.streamable_http_app(
+    "/mcp/hub",
+    m_hub.hub_mcp.streamable_http_app(
         streamable_http_path="/", transport_security=security
     ),
 )
