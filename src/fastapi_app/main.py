@@ -20,6 +20,7 @@ from .mcp import hub as m_hub
 from .mcp import mcp_health as m_health
 from .mcp import notion as m_notion
 from .mcp import mail as m_mail
+from .mcp import filemaker as m_filemaker
 
 load_dotenv()
 
