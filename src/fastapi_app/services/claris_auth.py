@@ -22,10 +22,27 @@ _REFRESH_MARGIN_SEC = 300
 _token_lock = threading.Lock()
 _token_cache = {"id_token": None, "expires_at": 0.0}
 
+# Why:
+# AWS boto3 uses client instance to run all services.
+# Error might cause due to multi-threads (race conditions),
+# when different thread try to modify same date at the same time.
+# → Creating a client will modify the session's internal data and it's NOT thread-safe
+# → Using a client won't modify the session's internal data and it's thread-safe
 
-# boto3 client は thread-safe なので一つを使い回す。
-# ただし boto3.client() の呼び出し自体を複数スレッドで同時に行うのは危険なため、
-# import 時（シングルスレッド）に専用の Session から一度だけ作成する。
+# Solve:
+# Only one session be built when the worker first imports this module,
+# and reused in the same worker (process)
+
+# Flow:
+#   FastAPI Flow：Nginx+Gunicorn+Uvicorn → muti-threads
+# → Gunicorn has multi-workers(process),
+#   each worker has one uvicorn,
+#   each uvicorn can have multi-threads,
+#   every thread in the same uvicorn share same session and client
+
+# → ( Only one session will be built when the first imported with boto3 by worker,
+#   at the same time, one client will be built and be reused )
+
 # Claris の Cognito は us-west-2 固定なので、未設定時のデフォルトにしておく。
 _cognito_client = boto3.session.Session().client(
     "cognito-idp", region_name=CLARIS_REGION or "us-west-2"
