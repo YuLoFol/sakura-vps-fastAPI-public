@@ -48,7 +48,8 @@ class _TokenCache:
     """process 内で共有する token キャッシュ。thread-safe。"""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._id_lock = threading.Lock()
+        self._fm_lock = threading.Lock()
         self._id_token: Optional[str] = None
         self._id_token_expires_at: float = 0.0
         self._fm_token: Optional[str] = None
@@ -56,12 +57,13 @@ class _TokenCache:
 
     # ---------- Claris ID (Cognito) 層 ----------
     def get_id_token(self, force_refresh: bool = False) -> str:
-        with self._lock:
+        # multi-threadsのため、self._id_lockを利用し、IdTokenキャッシュの「確認〜更新」を排他制御する
+        with self._id_lock:
             now = time.time()
             if not force_refresh and self._id_token and now < self._id_token_expires_at:
                 return self._id_token
 
-            # まず refresh token を使って新しい IdToken に交換する（SRP より速く、MFA も発生しない）
+            # まずrefresh tokenを使って新しい IdToken に交換する（SRP より速く、MFA も発生しない）
             try:
                 id_token = get_fresh_id_token()
             except Exception:
@@ -73,31 +75,25 @@ class _TokenCache:
                 id_token = result["AuthenticationResult"]["IdToken"]
 
             self._id_token = id_token
-            # Claris ID Token の有効期限は1時間。5分のバッファを持たせて早めに更新する
+            # Claris ID Tokenの有効期限は1時間。5分の余裕を持たせて早めに更新する
             self._id_token_expires_at = now + 55 * 60
             return id_token
 
     # ---------- FM Data API session 層 ----------
     def get_fm_token(self, database: str, force_refresh: bool = False) -> str:
-        with self._lock:
+        # multi-threadsのため、self._fm_lockを利用し、排他制御する
+        # キャッシュ確認 → session 作成 → キャッシュ書き込みを同じself._fm_lockの中に完結させる
+        # multi-threadsの同時token書き込み、上書きを防ぐ
+        with self._fm_lock:
             now = time.time()
             if not force_refresh and self._fm_token and now < self._fm_token_expires_at:
                 return self._fm_token
 
-        id_token = self.get_id_token()
-        resp = requests.post(
-            f"{_BASE_URL}/{database}/sessions",
-            headers={
-                "Authorization": f"FMID {id_token}",
-                "Content-Type": "application/json",
-            },
-            json={},
-            timeout=15,
-        )
+            # get_id_token()は自身のself._id_lockを使用するため、
+            # デッドロック(重複lock)の問題は発生しない(self._fm_lockを使用しない)
+            id_token = self.get_id_token()
 
-        if resp.status_code == 401:
-            # IdToken がちょうど失効していた可能性があるため、Cognito 層を強制更新して再試行する
-            id_token = self.get_id_token(force_refresh=True)
+            # requestをself._fm_lockの中に完結させる（multi-threadsによる排他制御の一部）
             resp = requests.post(
                 f"{_BASE_URL}/{database}/sessions",
                 headers={
@@ -108,20 +104,32 @@ class _TokenCache:
                 timeout=15,
             )
 
-        if resp.status_code >= 400:
-            raise FileMakerAuthError(
-                f"Data API session login failed ({resp.status_code}): {resp.text}"
-            )
+            if resp.status_code == 401:
+                # IdToken がちょうど失効していた可能性があるため、Cognito 層を強制更新して再試行する
+                id_token = self.get_id_token(force_refresh=True)
+                resp = requests.post(
+                    f"{_BASE_URL}/{database}/sessions",
+                    headers={
+                        "Authorization": f"FMID {id_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={},
+                    timeout=15,
+                )
 
-        token = resp.json()["response"]["token"]
-        with self._lock:
+            if resp.status_code >= 400:
+                raise FileMakerAuthError(
+                    f"Data API session login failed ({resp.status_code}): {resp.text}"
+                )
+
+            token = resp.json()["response"]["token"]
             self._fm_token = token
             # Data API session は15分無操作で失効するため、バッファを持たせる
             self._fm_token_expires_at = time.time() + 13 * 60
-        return token
+            return token
 
     def invalidate_fm_token(self) -> None:
-        with self._lock:
+        with self._fm_lock:
             self._fm_token = None
             self._fm_token_expires_at = 0.0
 
